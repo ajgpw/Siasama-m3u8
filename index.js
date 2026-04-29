@@ -33,7 +33,7 @@ function getM3U8(url) {
           const data = JSON.parse(stdout);
           const formats = data.formats || [];
 
-          // ✅ .m3u8だけ抽出
+          // m3u8だけ抽出
           const m3u8 = formats
             .map(f => f.url)
             .filter(u => u && u.includes(".m3u8"));
