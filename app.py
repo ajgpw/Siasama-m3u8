@@ -1,8 +1,6 @@
 import subprocess
-import json
 import os
 import shutil
-import sys
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -11,17 +9,19 @@ def get_m3u8(url):
     YT_DLP_PATH = "yt-dlp"
     PROXY_URL = "http://other.siatube.com:3007"
     
+    # 必要な情報（m3u8 URL）だけを直接抽出するコマンド
     command = [
         YT_DLP_PATH,
         "--js-runtimes", "node",
         "--proxy", PROXY_URL,
-        "-J",
         "--skip-download",
         "--no-check-certificate",
         "--youtube-include-hls-manifest",
         "--no-check-formats",
-        "--no-warnings",
-        "--extractor-args", "youtube:player_client=ios",
+        "--no-cache-dir",
+        "--no-playlist",
+        "--extractor-args", "youtube:player_client=web_embedded",
+        "--print", "%(formats.:.url)s",
         url
     ]
 
@@ -32,37 +32,25 @@ def get_m3u8(url):
             stderr=subprocess.PIPE,
             text=True,
             encoding='utf-8',
-            timeout=25
+            timeout=28
         )
 
         if result.returncode != 0:
             return {"error": "yt-dlp failed", "stderr": result.stderr}, 500
 
-        data = json.loads(result.stdout)
-        m3u8_urls = []
-
-        formats = data.get("formats", [])
-        for f in formats:
-            f_url = f.get('url', '')
-            if 'index.m3u8' in f_url or '/hls_playlist/' in f_url:
-                m3u8_urls.append({
-                    "format_id": f.get("format_id"),
-                    "res": f.get("resolution"),
-                    "url": f_url
-                })
+        # 出力された全URLの中からm3u8を含むものをフィルタリング
+        all_output_urls = result.stdout.strip().split('\n')
+        m3u8_urls = [u for u in all_output_urls if 'index.m3u8' in u or '/hls_playlist/' in u]
 
         if not m3u8_urls:
-            hls_url = data.get('url')
-            if hls_url and ('m3u8' in hls_url or 'manifest' in hls_url):
-                m3u8_urls.append({"format_id": "direct", "url": hls_url})
+            return {"error": "m3u8 not found", "all_urls_count": len(all_output_urls)}, 404
 
         return {
-            "title": data.get("title"),
-            "m3u8_urls": m3u8_urls
+            "m3u8_urls": list(set(m3u8_urls)) # 重複排除
         }, 200
 
     except subprocess.TimeoutExpired:
-        return {"error": "yt-dlp timeout (25s)"}, 504
+        return {"error": "Extreme Timeout (28s)"}, 504
     except Exception as e:
         return {"error": str(e)}, 500
 
