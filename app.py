@@ -11,8 +11,6 @@ def get_m3u8(url):
     YT_DLP_PATH = "yt-dlp"
     PROXY_URL = "http://other.siatube.com:3007"
     
-    node_path = shutil.which("node")
-    
     command = [
         YT_DLP_PATH,
         "--js-runtimes", "node",
@@ -20,9 +18,11 @@ def get_m3u8(url):
         "-J",
         "--skip-download",
         "--no-progress",
-        "--youtube-include-hls-manifest",
         "--no-check-certificate",
-        "-f", "hls-fastly/hls-akamai/hls/bestvideo+bestaudio/best",
+        "--youtube-include-hls-manifest",
+        "--flat-playlist",
+        "--no-playlist",
+        "--extractor-args", "youtube:player_client=android",
         url
     ]
 
@@ -33,40 +33,29 @@ def get_m3u8(url):
             stderr=subprocess.PIPE,
             text=True,
             encoding='utf-8',
-            timeout=60
+            timeout=30
         )
 
         if result.returncode != 0:
-            return {"error": "yt-dlp execution failed", "stderr": result.stderr}, 500
-
-        if not result.stdout or not result.stdout.strip():
-            return {"error": "No output from yt-dlp", "stderr": result.stderr}, 500
+            return {"error": "yt-dlp failed", "stderr": result.stderr}, 500
 
         data = json.loads(result.stdout)
-        formats = data.get("formats", [])
-        
         m3u8_urls = []
-        
+
+        formats = data.get("formats", [])
         for f in formats:
             f_url = f.get('url', '')
-            protocol = f.get('protocol', '')
-            
-            if 'm3u8' in protocol or 'hls' in protocol or 'manifest' in f_url or '.m3u8' in f_url:
+            if 'index.m3u8' in f_url or '/hls_playlist/' in f_url:
                 m3u8_urls.append({
                     "format_id": f.get("format_id"),
                     "resolution": f.get("resolution"),
-                    "url": f_url,
-                    "protocol": protocol,
-                    "ext": f.get("ext")
+                    "url": f_url
                 })
 
         if not m3u8_urls:
-            hls_manifest_url = data.get('url')
-            if hls_manifest_url and ('manifest' in hls_manifest_url or '.m3u8' in hls_manifest_url):
-                m3u8_urls.append({
-                    "format_id": "direct_manifest",
-                    "url": hls_manifest_url
-                })
+            hls_url = data.get('url')
+            if hls_url and 'm3u8' in hls_url:
+                m3u8_urls.append({"format_id": "direct", "url": hls_url})
 
         return {
             "title": data.get("title"),
@@ -74,9 +63,7 @@ def get_m3u8(url):
         }, 200
 
     except subprocess.TimeoutExpired:
-        return {"error": "yt-dlp timed out"}, 504
-    except json.JSONDecodeError:
-        return {"error": "Failed to parse yt-dlp output", "raw": result.stdout[:500]}, 500
+        return {"error": "yt-dlp timeout (30s)"}, 504
     except Exception as e:
         return {"error": str(e)}, 500
 
