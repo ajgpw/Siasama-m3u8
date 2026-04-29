@@ -11,6 +11,7 @@ def get_m3u8(url):
     
     command = [
         YT_DLP_PATH,
+        "--js-runtimes", "node",
         "--proxy", PROXY_URL,
         "--skip-download",
         "--no-check-certificate",
@@ -18,8 +19,7 @@ def get_m3u8(url):
         "--no-check-formats",
         "--no-cache-dir",
         "--no-playlist",
-        "--ignore-config",
-        "--extractor-args", "youtube:player_client=mweb,ios;skip=dash,hls",
+        "--extractor-args", "youtube:player_client=android,ios,web_embedded",
         "--print", "%(formats.:.url)s",
         url
     ]
@@ -31,24 +31,28 @@ def get_m3u8(url):
             stderr=subprocess.PIPE,
             text=True,
             encoding='utf-8',
-            timeout=25
+            timeout=28
         )
 
         if result.returncode != 0:
             return {"error": "yt-dlp failed", "stderr": result.stderr}, 500
 
         all_urls = result.stdout.strip().split('\n')
-        m3u8_urls = [u for u in all_urls if 'index.m3u8' in u or '/hls_playlist/' in u]
+        
+        m3u8_urls = [
+            u for u in all_urls 
+            if "manifest.googlevideo.com" in u and ("/hls_playlist/" in u or "index.m3u8" in u)
+        ]
 
         if not m3u8_urls:
-            return {"error": "m3u8 not found", "count": len(all_urls)}, 404
+            return {"error": "HLS manifest not found", "total_urls_found": len(all_urls)}, 404
 
         return {
             "m3u8_urls": list(set(m3u8_urls))
         }, 200
 
     except subprocess.TimeoutExpired:
-        return {"error": "Internal Timeout"}, 504
+        return {"error": "Render/App Timeout (28s)"}, 504
     except Exception as e:
         return {"error": str(e)}, 500
 
