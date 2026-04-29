@@ -19,6 +19,8 @@ def get_m3u8(url):
         "-J",
         "--skip-download",
         "--no-progress",
+        "--format", "bestvideo+bestaudio/best",
+        "--all-subs",
         url
     ]
 
@@ -38,15 +40,31 @@ def get_m3u8(url):
         formats = data.get("formats", [])
         
         m3u8_list = []
+        
         for f in formats:
-            if 'm3u8' in f.get('protocol', '') or f.get('ext') == 'm3u8' or '.m3u8' in f.get('url', ''):
+            is_m3u8 = 'm3u8' in f.get('protocol', '') or f.get('ext') == 'm3u8' or '.m3u8' in f.get('url', '')
+            
+            if is_m3u8:
                 m3u8_list.append({
                     "format_id": f.get("format_id"),
                     "resolution": f.get("resolution"),
                     "url": f.get("url"),
                     "vcodec": f.get("vcodec"),
-                    "acodec": f.get("acodec")
+                    "acodec": f.get("acodec"),
+                    "type": "hls"
                 })
+
+        if not m3u8_list:
+            for f in formats:
+                if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
+                    m3u8_list.append({
+                        "format_id": f.get("format_id"),
+                        "resolution": f.get("resolution"),
+                        "url": f.get("url"),
+                        "vcodec": f.get("vcodec"),
+                        "acodec": f.get("acodec"),
+                        "type": "progressive"
+                    })
 
         return {
             "title": data.get("title"),
